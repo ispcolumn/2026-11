@@ -1,0 +1,522 @@
+The ISP Column 
+A  column on things Internet
+
+
+                                                               November 2026
+                                                                Geoff Huston
+
+
+The DO's and DOn'ts of Post-Quantum DNSSEC
+
+  There has been a lot of interest in recent months on the topic of
+  post-Quantum cryptography (PQC) and DNSSEC. The development of quantum
+  computers poses a threat to conventional cryptographic practices, where an
+  adequately powerful quantum computer, a so-called "cryptographically
+  relevant quantum computer" (CRQC), could be used derive the private key
+  from exposed public information including the public key and encrypted
+  text within a timeframe that could permit subsequent exploitation. In the
+  context of DNSSEC, the risk lies in the potential for a CRQC to calculate
+  this private key within the lifetime of the use of a DNSSEC key pair.
+
+        In recent times there has been considerable interest in the
+        development of so-called quantum computers. These systems exploit
+        quantum mechanical phenomena where a unit of information is not a
+        classical bit with a value of 1 or 0, but a qbit that is the
+        superposition of its two basic states simultaneously. There are many
+        sources of descriptions of quantum computers, so I'll not go into
+        any further detail here, but suffice it to say that while there is
+        much optimism that quantum computers will be refined in the coming
+        years to the point where they are able to solve significant
+        computational challenges, the current state of quantum computers is
+        very early in its infancy! They represent the equivalent of a
+        massively parallel processing, sometimes described as parallel
+        processing at exponential scale.
+
+        The engineering challenges with quantum computers are significant,
+        and progress in constructing a quantum computer has so far been slow
+        and extremely expensive. What's kept many projects going is the
+        prospect that a significantly large quantum computer could solve a
+        range of computational challenges that are simply beyond the
+        practical reach of binary computers.
+
+        Well in advance of the engineering challenge of constructing quantum
+        computers, academic research into the properties of quantum
+        computers highlighted the observation that quantum computing could
+        be significantly faster in solving certain classes of problems than
+        classical computers. In 1994 Peter Shor published an algorithm for
+        finding the prime factors of an integer. This algorithm has
+        compelling potential application in cryptography when the
+        exponential speedup compared to best known classical (non-quantum)
+        algorithms heralds a new era of cryptography. The implication is
+        that cyphertext that is encrypted using RSA and ECC algorithms is
+        susceptible to being broken once quantum computers achieve the
+        necessary scale and reliability goals. This computer of necessary
+        scale and reliability is termed a Cryptographically Relevant Quantum
+        Computer (CRQC). When that may happen is literally anyone's guess,
+        but the more money that gets pumped into finding solutions to the
+        engineering issues of quantum computers, the earlier that date will
+        be. The year 2030 has been talked about, and it is not considered to
+        be completely crazy date, even though it's well on the optimistic
+        side. This date is well within a two-decade horizon of keeping a
+        secret, so it you want to ensure that what you are encrypting today
+        remains a secret for the next twenty years, then it is prudent to
+        assume that quantum computers will be used to try and break this
+        secret sometime within that twenty-year period. So, even though
+        capable quantum computers are yet to be built, we need consider the
+        use of quantum-resistant cryptographic algorithms today in certain
+        areas where long-held integrity of the encryption process is
+        important.
+
+        The present risk for encryption lies in an attacker performing data
+        capture now, in anticipation of being able to post-process it later
+        with a CRQC. There is even an acronym for this, Harvest Now, Decrypt
+        Later (HNDL).
+
+        Cryptography is also used for digital signatures, where the
+        signature is used to establish the authenticity of signed message
+        and the veracity of its author. Compromise of the key pair would
+        allow an attacker to impersonate the author. Here the period of
+        vulnerability is related to the period of use of the key pair used
+        to generate digital signatures. The longer the period of use the
+        longer the time an attacker has to calculate the private key.
+
+  DNSSEC key lifetimes for DNS top-level domains (tlds) were studied in an
+  ICANN publication in 2022 (Observing DNSSEC Key Lifecycles", Ed Lewis,
+  OCTO-035 <https://www.icann.org/en/system/files/files/octo-035-18jul22-en.pdf>).
+  Key management practices appeared to vary with respect to the lifetime of
+  use, but a first level generalisation this study reported a zone's
+  Key-Signing Key (KSK) being used for a period of one or more years, and
+  the Zone Signing Key (ZSK) being used for a period of one or more months.
+
+  A first line response to the CRQC risk is to use an operational practice
+  of regular key rotation, introducing a new ZSK every month, and a new KSK
+  every year, or even every six months. These numbers are perhaps slightly
+  more frequent in terms of key rotation for KSKs as observed in the ICANN
+  study, but they do not represent a major change in the anticipated
+  longevity of existing keys in the face of the current quantum risk.
+  However, the situation is not static, and if the development of quantum
+  computers is rapid, then this practice of using short key lifetimes will
+  not produce a large amount of leeway in terms of the need to switch to a
+  PQC in your DNSSEC configuration.
+
+  That means we should now look at the potential impacts of quantum
+  cryptography on DNSSEC.
+
+  One common characteristic of many post-quantum cryptography algorithms is
+  that they require significantly larger key sizes than commonly used
+  "pre-quantum" public key algorithms. For example, comparing the key and
+  signature sizes of DNSSEC algorithm 13 (ECDSA P-256 with SHA 256) with
+  DNSSEC algorithm 18 (ML-DSA-44) we have the following comparison:
+  
+                 Public Key    Private Key      Signature
+    ECDSA P-256     32 B           32 B             65 B
+    ML-DSA-44    1,312 B        2,560 B          2,420 B
+
+  The implication is that when you attach a DNSSEC signature generated by a
+  post-quantum crypto algorithm to a DNS response then the size of the
+  response gets a whole lot larger.
+
+  For example, when a DNS stub resolver queries a recursive resolver for a
+  name signed with ECDSA P-256 and requests the signature record by setting
+  the DNSSEC OK bit in the query, then the response includes this 65-byte
+  signature. At 191 bytes, this response fits easily into an unfragmented
+  UCP packet. When we repeat this query for a name signed with the
+  post-quantum ML-DSA-44 algorithm, the response is 2,551 bytes.
+  
+    ECDSA P-256
+    $ dig +dnssec alg13.dnstest.dev @1.1.1.1
+    ...
+    ;; ANSWER SECTION:
+    alg13.dnstest.dev.  0   IN  A   188.114.96.0
+    alg13.dnstest.dev.  0   IN  A   188.114.97.0
+    alg13.dnstest.dev.  0   IN  RRSIG   A 13 3 0 20261103042633 20261102032633 
+       38093 alg13.dnstest.dev. gmCLET+wow/NKk6IBiwZPQbSJp1DkeiJQwPPWs+t7/x3K7
+        Q3Cb9E357E  kSeDBea6n+HwGyDViOrEtwsLVbsPFQ==
+    ;; MSG SIZE  rcvd: 191
+
+
+
+    ML-DSA-44 
+    $ dig +dnssec mldsa44.dnstest.dev @1.1.1.1
+    ...
+    ;; ANSWER SECTION:
+    mldsa44.dnstest.dev.    0   IN  A   188.114.96.0
+    mldsa44.dnstest.dev.    0   IN  A   188.114.97.0
+    mldsa44.dnstest.dev.    0   IN  RRSIG   A 18 3 0 20261103042658 20261102032658 
+        25195  mldsa44.dnstest.dev. TfiUf7kZY4U3AtmE7GTo8NLHgfHCPHyZHTlWh2zVVpZ0o
+        A+zNhFWAr3M0CLF6Ykx130W2Z53ZEh7WlpAM7aN32cEi0JIPXlplTMkwAxRfxHkuYQl 
+        ...
+        QklTb3V5gYWMlqzL3OHy9PchS1dZY3SNp9P3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgbMDo=
+    ;; MSG SIZE  rcvd: 2551
+
+  This latter query elicited a truncated response from the recursive
+  resolver over UDP, and the stub resolver had to open up a TCP session to
+  repeat the query over TCP. Instead of a 2-packet query/response exchange
+  over UDP, the entire DNS transaction took 10 packets, including the
+  truncation signal from the initial UDP exchange, the TCP opening handshake
+  and the TCP session completion packet exchange added to the query and
+  response packets.
+
+Transport for Large DNS Payloads
+
+  Why not just use conventional IP packet fragmentation and stick with using
+  UDP? The maximal size of an IP packet is 65,536 bytes, and we would
+  certainly be able to use ML-DSA 44 and presumably all other candidate
+  post-quantum crypto signature algorithms in DNS over UDP by allowing the
+  network layer to fragment such large packets (or fragmentation at source
+  in the case of IPv6) and reassemble the fragments at the destination.
+
+  The problem is that IP packet fragmentation is unreliable and risky (see
+  the article "DNS XL" for details and measurement data), and the general
+  consensus in the DNS (and in other parts of the IP architecture) is that
+  the downsides of IP packet fragmentation unreliability in both IPv4 and
+  IPv6 outweigh any residual benefits of having the IP network layer manage
+  large packet payloads through fragmentation.
+
+  The original DNS specification effectively ignored this issue by simply
+  limiting DNS payloads when using UDP to 512 octets or less. This was
+  modified with the introduction of Extension Mechanisms for DNS (EDNS, RFC
+  6891), and this extension mechanism includes a requestor's UDP payload
+  size, defined as the largest UDP payload that can be reassembled and
+  delivered in the requestor's network stack. Up to around 2019, the general
+  guidance for DNS resolvers and servers was that: "A good compromise may be
+  the use of an EDNS maximum payload size of 4096 octets as a starting
+  point." (RFC 6891, Section 6.2.5).
+
+  However, extensive measurements of IP fragmentation performance,
+  particularly when using UDP over IPv6 raised serious doubts as to the
+  robustness of IP packet fragmentation. To quote from the DNS Flag Day 2020
+  web site (<https://www.dnsflagday.net/2020/>): "IP fragmentation is
+  unreliable on the Internet today, and can cause transmission failures when
+  large DNS messages are sent via UDP. Even when fragmentation does work, it
+  may not be secure; it is theoretically possible to spoof parts of a
+  fragmented DNS message, without easy detection at the receiving end." The
+  recommendation from this initiative is to use an EDNS UDP buffer size of
+  1,232 bytes, which was intended to avoid IP fragmentation on nearly all
+  current IP networks.
+
+  How well do recursive resolvers follow this recommendation to use a EDNS
+  UDP buffer size of 1,232 in their queries? A distribution of these buffer
+  sizes in DNS in today's Internet is shown in Figure 1. This Is a data set
+  gathered by the APNIC Measurement platform over a 7-day period ending on 3
+  November 2026, collecting a total of some 36 billion queries gathered from
+  some 245M end users who were enrolled in this measurement.
+  
+    <https://ispcol.potaroo.net/2026-11/dodnssec-f1.png>
+    Figure 1 - Distribution of EDNS UDP Buffer Sizes in DNS Queries
+
+  Clearly, most of the queries in this data set use a UDP buffer size of
+  1,410 bytes, which appears to allow a DNS payload, a UDP transport header
+  and an IPv4 or IPv6 IP header to fit within a 1,500-byte IP packet. (In a
+  similar measurement exercise conducted in September 2020, 83% of some 875M
+  queries used a UDP Buffer Size value of 4,096 bytes
+  (<https://ispcol.potaroo.net/2020-11/xldns.html>), so there has been a
+  considerable change in this behavioural profile in the ensuing 6 years.
+
+  If we take a DNS payload size of 1,472 bytes in IPv4 and 1,452 in IPv6 as
+  being the equivalent of a 1,500-byte IP packet, then 75.2% of queries are
+  using a buffer size value that it likely to avoid IP fragmentation in DNS
+  over UDP responses.
+
+  Of course, that figure implies that 24.8% of queries indicate that these
+  recursive resolvers can accept an IP fragmented DNS response whose total
+  DNS payload size is larger than 1,500 bytes. It is possible that this is
+  indeed the case, but a more likely explanation is that the recursive
+  resolver is simply using a buffer size setting derived from a simple cut
+  and paste from RFC 6891.
+
+  However, it's not a bad as this may sound, as it's highly improbable that
+  this distribution of UDP buffer sizes in queries would result in around
+  one quarter of all responses being passed back with IP-fragmented UDP when
+  an authoritative server is attempting to respond with a large DNS
+  response. The server has its own maximum DNS UDP payload size as well, and
+  the minimum of the query's UDP buffer size and the server's UDP buffer
+  size is used to determine if the server will generate a UDP response or
+  respond with a truncated response (thereby signalling that the querier
+  should re-try the query over TCP). As long as authoritative servers are
+  behaving conservatively and applying a conservative UDP buffer size limit
+  to its responses then IP fragmentation unreliability can be avoided.
+
+  The implication here is that it's highly likely that mostly all large DNS
+  responses in the public DNS would cause a server to generate a DNS
+  response over UDP with the truncation flag set, which would then trigger a
+  re-query over TCP.
+  
+  In this case, the large response will be generated when replying to a
+  query from a recursive resolver where the query name has been signed with
+  a post-quantum cryptographic algorithm, and the query has the DNSSEC OK
+  (DO) bit set in the query. A similar behaviour exists for a query to a
+  non-existent name in a DNSSEC signed zone, where the negative response
+  will contain two signature records, one for the zone's start of authority
+  record, and the other for the spanning NSEC record demonstrating
+  non-existence of the queried name.
+
+Setting the DNSSEC OK bit
+
+  A DNS recursive resolver signals to a server, or a stub resolver signals
+  to a recursive resolver, that it wants the DNSSEC signature (that has been
+  bound to the queried name) attached to the response by setting the DNSSEC
+  OK bit in the query. The response will then have the RRSIG resource record
+  set (RRset) associated with the queried name, if the zone is a
+  DNSSEC-signed zone.
+
+  This means that if a stub resolver is not going to perform DNSSEC
+  validation, then the DO bit is clear in the query to the recursive
+  resolver. If the stub resolver is not interested in having the recursive
+  resolver perform validation, then this bit should also be clear in the
+  queries sent by the recursive resolver to authoritative servers when
+  resolving this name. But that's not the case. The relevant specification
+  text here is in RFC 4035, which states: "A security-aware resolver MUST
+  include an EDNS (RFC 2671) OPT pseudo-RR with the DO (RFC 3225) bit set
+  when sending queries." If the initiating query to this resolver does not
+  have the DO bit set, this recursive DNSSEC-aware resolver will still issue
+  the query to the authoritative server with the DO bit set, but remove
+  DNSSEC RRsets before returning the data to the original client.
+
+  It appears that the reason for this resolver behaviour is to avoid
+  inadvertent DNSSEC stripping. If a security-aware resolver always asks for
+  the DNSSEC RRset through the DO flag, then it can always use the cached
+  entry for subsequent queries, stripping these RRsets from the response if
+  the query does not have the DO bit set. The alternative approach is to
+  cache the query's DO bit setting with the response, and if the query has
+  the DO bit set and the cached entry does not, then the resolver would need
+  to re-query with the DO bit set and cache this new result.
+
+  In today's network, how often is the DO bit set in queries?
+
+                                 Queries            DO=1          Ratio
+      All Queries             6,324,963,331    21,859,397,198    60.2%
+      QType='A'              18,129,250,428    10,909,410,674    60.2%
+      Non-Duplicate Queries   2,371,625,460     1,443,544,917    60.9%
+      
+  These numbers are from a 1-week measurement for the period ending 3
+  November using the APNIC measurement platform which undertook measurements
+  from a broad sampling of end users as performed by Google's Ad delivery
+  system. The first row reflects all queries received for unique domain
+  names. The second row reflect all queries using the 'A' query type, and
+  the third row removes all duplicate queries, which is the equivalent of
+  one query per end user. The relative use of the DO bit is constant across
+  these classifications.
+
+  We can also look at the ratio of users that are performing DNSSEC
+  validation. The APNIC Labs report on DNSSEC validation</a> rates for this
+  same period (<https://stats.labs.apnic.net/dnssec/XA>) is 40% of users.
+  These 40% of users are located behind recursive resolvers that perform
+  DNSSEC validation and will not resolve a name which cannot be validated. A
+  further 8.5% of users are located behind DNS resolution environments that
+  also attempt DNSSEC validation, but when they receive a SERVFAIL response
+  from a DNSSEC-validating resolver, they appear to re-query using a
+  resolver that does not perform DNSSEC validation. This would suggest that
+  some 48% of users are sending queries to a recursive resolver that is
+  security-aware and would be expected to set the DO bit in their queries to
+  authoritative servers. Our 60% result of users sending DO bit queries
+  indicates that a further 12% of users do not appear to be performing
+  DNSSEC validation (there are no queries for DNSKEY records), yet the
+  resolvers these users are using are setting the DO bit in their queries.
+
+Is this a problem?
+
+  Does this figure of 12% users whose DNS resolvers appear to be making
+  gratuitous DO queries to authoritative servers present a problem for the
+  DNS infrastructure?
+
+  There are three major factors to consider here.
+
+  The first is the impact of caching. We've already seen that some 48% of
+  users generate queries that appear to trigger the fetching of DNSSEC
+  signatures, but there is a critical difference between the APNIC
+  measurement and the conventional operation of the DNS. DNS recursive
+  resolvers operate local caches, and query traffic appears to have a high
+  level of self-similarity. The APNIC measurement uses unique labels to
+  specifically prevent local caches from absorbing such queries before they
+  get to the authoritative servers. That implies that while it may entail
+  some additional packets and delay to retrieve the DNSSEC signatures, the
+  responses are held in the local cache.
+
+  Secondly, at least for the present, the overall majority of stub resolvers
+  do not directly validate DNS responses. They leave that task to the
+  recursive resolver and take their hint from the AD bit set in the response
+  as an indication that the resolver has successfully validated the
+  response.
+
+  Thirdly, if you look at the profile of queried names on the Internet, few
+  of these queried names are from DNSSEC-signed zones. The <a
+  href="https://stats.labs.apnic.net/cfdnssecdata/?w=1&a=0">data</a> from
+  the Cloudflare 1.1.1.1 recursive resolver indicates that only some 2% of
+  queried names are DNSSEC-signed in the first place.
+
+DNSSEC Signals
+
+  Let's quickly review the signalling mechanisms used in the DNS to control
+  DNSSEC functions.
+
+    1. The DO Bit (DNSSEC OK)
+    
+    This bit is defined in EDNS0 extension OPT pseudo-resource record,
+    rather than the main 12-byte DNS header. A DNS resolver or client may
+    set this bit in a query, and it informs the upstream name server or
+    recursive resolver: "I am DNSSEC-aware. You are allowed to include
+    DNSSEC resource records (like RRSIG, DNSKEY, and DS) in your response."
+    If the DO bit is 0 (or EDNS0 is omitted from the query), a
+    security-aware server will usually withhold DNSSEC signature records to
+    keep the response small (under 512 bytes). Specifically, the DO bit does
+    not say "Please perform DNSSEC validation on any response you may
+    generate." That signal, in its negative form, is left to the CD
+    bit.
+
+    2. CD Bit (Checking Disabled)
+
+    This is bit 11 of the standard DNS message header (repurposed from an
+    originally reserved Z bit). A stub resolver may set this bit in a query
+    to a recursive resolver. It tells the recursive name server: "Do not
+    block or strip out data if DNSSEC validation fails. Send me the records
+    anyway."
+
+    A validating stub resolver (running locally on an end-host) might set CD
+    to 1 so it can fetch the cryptographic signature data (normally through
+    using the DO bit) and perform the validation check itself, rather than
+    trusting an upstream resolver.
+
+    If the CD bit is clear (0) a DNSSEC-validating recursive resolver will
+    return the SERVFAIL response code if the recursive resolver's validation
+    fails.<br> <br>
+
+    3. AD Bit (Authentic Data)
+
+    This is bit 10 of the standard DNS message header (repurposed from an
+    originally reserved Z bit). A recursive resolver will set this bit in a
+    response as a signal that every resource record in the answer section
+    has been cryptographically verified via DNSSEC and is authentic.
+
+    Stub resolvers should only trust the AD=1 response if they have a
+    secure, trusted and authenticated channel to that recursive resolver.
+
+
+  Summary
+
+    Bit       Name     Role    Purpose
+    DO     DNSSEC OK  Query    Requests DNSSEC records (RRSIG, NSEC)
+                               attached to a response
+    CD     Checking   Query    Requests the resolver to bypass validation
+           Disabled            and return data anyway
+    AD     Authentic  Response Records that the returned data passed the 
+           Data                recursive resolver's DNSSEC validation
+
+
+  There are a number of consequences of this definition of these DNSSEC signals:
+  
+    - A stub resolver cannot directly query a recursive resolver's
+      capabilities to detect if it performs DNSSEC validation of DNSSEC
+      signed response.
+
+    - A stub resolver may set the CD and DO bits in its query to indicate to
+      a recursive resolver that it intends to perform DNSSEC validation
+      itself and the recursive resolver should return a response
+      irrespective of whether it would pass a local validation test or not.
+
+    - The stub resolver may receive a response that has the AD bit set even
+      when the CD bit is set. This seeming contradiction is clarified in RFC
+      3665. The AD bit is set in a response when a resolver has verified the
+      DNSSEC signatures accompanying the records in the Answer and Authority
+      section. If the locally cached data has been verified already, then it
+      will set the AD bit to indicate this, irrespective of the CD bit
+      setting.
+
+DNS over TCP
+
+  It's not just the volume of these apparently gratuitous DO enabled
+  queries. Does the introduction of post-quantum crypto signatures in DNSSEC
+  pose a significant additional burden for DNS infrastructure, as these DO
+  queries will entail a TCP transaction for such signatures? Presumably when
+  the case for using post-Quantum algorithms is abundantly clear due to the
+  availability of sufficiently powerful quantum computers then we might
+  anticipate the entire DNSSEC space turning to use such algorithms. The
+  inference is that a large proportion of DNS responses (60% on current
+  numbers) would need to be carried by a failover to TCP.
+
+  In such a scenario, if such a high proportion of DNS queries are being
+  made over UDP only to be redirected to use TCP, then why start with UDP at
+  all? Why wouldn't we just go straight to TCP when making a query with the
+  DO but set? That scenario is hypothetical today, but there is a body of
+  opinion that the development of quantum computers is quick enough for this
+  to become a reality in just a few more years.
+
+Should we change the DO bit behaviour?
+
+  Where is all this leading?
+
+  I'm a co-author of an internet draft (titled "No DO for you"
+  (<https://datatracker.ietf.org/doc/draft-wagope-dnsop-do-bit/>) that
+  proposes that "non-DNSEC validating resolvers clear the DO bit in their
+  queries as they do not (necessarily) need the DNSSEC records. This
+  approach may help mitigate the number of TCP connections that
+  authoritative servers need to handle, but at the cost of additional
+  complexity and number of queries." This behaviour would entail the
+  resolver caching both the response and the DO bit setting used in the
+  query that generated the response. If the cached response was obtained
+  with the DO bit cleared and the resolver subsequently received a query
+  with the DO bit set, it should perform a re-query with the DO bit set and
+  load the response into its cache.
+
+  This is a small tweak to DNS resolver behaviour that has the potential to
+  remove some of the load of fetching DNSSEC signatures when they will not
+  be used, and in the case of post-Quantum signatures avoiding the overhead
+  of performing a TCP query in such gratuitous circumstances.
+
+  On the other hand, there a lingering concern that the DNS is already
+  overloaded with tweaks both small and large already
+  (<https://www.ietf.org/blog/herding-dns-camel/>) and adding more such
+  tweaks doesn't necessarily improve the robustness of the DNS. The
+  continuous addition of such tweaks tends to make the DNS more fragile and
+  less robust. TCP is an integral part of the DNS specification and taking
+  such measures to avoid using TCP doesn't appear to make much sense.
+
+  I believe I share my co-authors uncertainly here about the appropriate way
+  to proceed, and the draft proposing to clear the DO bit in queries
+  contains the following introduction:
+  
+    Editor note: THIS IS A WORKING IDEA FOR DISCUSSION.
+
+    It might be the best idea ever... or the worst idea ever. The authors
+    really cannot decide (or even agree among themselves), but we have
+    written this up as an ID to share it with the WG. Please understand that
+    we are simply floating the idea; if it turns out that it is the worse
+    idea ever, we'll happily drop it and save ourselves a bunch of work! :-)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Disclaimer
+
+  The above views do not necessarily represent the views or positions of the
+  Asia Pacific Network Information Centre.
+
+Author
+
+  Geoff Huston AM, M.Sc., is the Chief Scientist at APNIC, the Regional
+  Internet Registry serving the Asia Pacific region. 
+
+  www.potaroo.net
+
+
